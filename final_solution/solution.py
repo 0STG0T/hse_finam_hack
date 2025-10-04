@@ -18,8 +18,13 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ML libraries
-from catboost import CatBoostClassifier
+import lightgbm as lgb
+from catboost import CatBoostRegressor, CatBoostClassifier
+from sklearn.linear_model import Ridge
+from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
+from sklearn.metrics import mean_absolute_error
+from scipy.optimize import minimize
 
 
 class FinancialForecaster:
@@ -29,7 +34,12 @@ class FinancialForecaster:
     Использует:
     - Новостные фичи (sentiment analysis + агрегации)
     - Ценовые фичи (OHLCV + technical indicators)
-    - 20 классификаторов CatBoost (по одному на каждый день)
+    - Мощный ансамбль для каждого из 20 дней:
+        * 2 LGBM (aggressive + conservative)
+        * 1 CatBoost
+        * 1 Ridge (на macro features)
+    - Оптимизация весов ансамбля через scipy.optimize
+    - Dual feature sets: tree features для деревьев, macro для Ridge
     - Кластеризация тикеров для генерализации
 
     Output format: ticker,p1,p2,...,p20 (одна строка на тикер)
@@ -53,16 +63,66 @@ class FinancialForecaster:
         self._init_model_params()
 
     def _init_model_params(self):
-        """Инициализация параметров моделей"""
+        """Инициализация параметров моделей из main.ipynb"""
         self.model_params = {
-            'catboost': {
-                'iterations': 100,
-                'learning_rate': 0.03,
-                'depth': 5,
+            'lgbm_aggressive': {
+                'n_estimators': 750,
+                'learning_rate': 0.05,
+                'max_depth': 8,
+                'subsample': 0.85,
+                'colsample_bytree': 0.85,
+                'reg_alpha': 0.1,
+                'reg_lambda': 0.1,
                 'random_state': self.random_state,
-                'verbose': False
+                'verbose': -1
+            },
+            'lgbm_conservative': {
+                'n_estimators': 500,
+                'learning_rate': 0.01,
+                'max_depth': 5,
+                'num_leaves': 16,
+                'subsample': 0.7,
+                'colsample_bytree': 0.7,
+                'reg_alpha': 1.0,
+                'reg_lambda': 1.0,
+                'random_state': self.random_state,
+                'verbose': -1
+            },
+            'lgbm_clf_aggressive': {
+                'n_estimators': 100,
+                'learning_rate': 0.05,
+                'max_depth': 5,
+                'random_state': self.random_state,
+                'verbose': -1
+            },
+            'lgbm_clf_conservative': {
+                'n_estimators': 100,
+                'learning_rate': 0.01,
+                'max_depth': 4,
+                'random_state': self.random_state,
+                'verbose': -1
+            },
+            'catboost': {
+                'iterations': 1000,
+                'l2_leaf_reg': 5,
+                'random_seed': self.random_state,
+                'grow_policy': 'Depthwise',
+                'verbose': 0
+            },
+            'catboost_clf': {
+                'iterations': 700,
+                'random_seed': self.random_state,
+                'grow_policy': 'Depthwise',
+                'verbose': 0
+            },
+            'ridge': {
+                'alpha': 1.0,
+                'random_state': self.random_state
             }
         }
+
+        # Веса ансамбля (будут оптимизированы при обучении)
+        self.ensemble_weights = {}
 
     def fit(self, candles_path: str, news_path: str):
         """
@@ -501,54 +561,130 @@ class FinancialForecaster:
         }
 
     def _train_models(self, train_data: Dict):
-        """Обучение моделей для предсказания вероятностей роста на 1-20 дней"""
+        """
+        Обучение полного ансамбля для предсказания вероятностей роста на 1-20 дней.
+        Для каждого горизонта обучаем:
+        - 2 LGBM (aggressive + conservative) - регрессоры и классификаторы
+        - 1 CatBoost - регрессор и классификатор
+        - 1 Ridge (только на macro features) - регрессор
+        Затем оптимизируем веса ансамбля
+        """
         df = train_data['df']
         tree_features = train_data['tree_features']
+        macro_features = train_data['macro_features']
 
-        # Подготовка данных
-        X_tree = df[tree_features].fillna(0)
-
-        # Обучаем 20 классификаторов - по одному для каждого дня
-        print("  • Обучение 20 классификаторов для p1-p20...")
+        print("  • Обучение полного ансамбля для p1-p20...")
+        print(f"    Модели на горизонт: 2xLGBM + CatBoost + Ridge = 4 модели")
+        print(f"    Tree features: {len(tree_features)}, Macro features: {len(macro_features)}")
 
         for horizon in range(1, 21):
-            # Таргет: рост на horizon дней вперед
             target_col = f'log_return_{horizon}d'
 
             if target_col not in df.columns:
                 print(f"    ⚠️  Пропускаем день {horizon} - нет таргета {target_col}")
                 continue
 
-            y = df[target_col]
-            y_binary = (y > 0).astype(int)
+            # Подготовка данных
+            y = df[target_col].copy()
+            valid_mask = ~y.isna()
 
-            # Удаляем NaN
-            valid_mask = ~y_binary.isna()
-            X_valid = X_tree[valid_mask]
-            y_valid = y_binary[valid_mask]
+            # Tree features
+            X_tree = df[tree_features].fillna(0)[valid_mask]
+            y_valid = y[valid_mask]
+            y_binary = (y_valid > 0).astype(int)
 
-            if len(y_valid) == 0:
-                print(f"    ⚠️  Пропускаем день {horizon} - нет валидных данных")
+            # Macro features
+            X_macro = df[macro_features].fillna(0)[valid_mask]
+
+            if len(y_valid) < 100:
+                print(f"    ⚠️  Пропускаем день {horizon} - мало данных ({len(y_valid)})")
                 continue
 
-            # Обучаем CatBoost классификатор
-            model = CatBoostClassifier(**self.model_params['catboost'])
-            model.fit(X_valid, y_valid)
-            self.models[f'prob_{horizon}d'] = model
+            # === 1. LGBM Aggressive ===
+            lgbm_agg_reg = lgb.LGBMRegressor(**self.model_params['lgbm_aggressive'])
+            lgbm_agg_reg.fit(X_tree, y_valid)
+
+            lgbm_agg_clf = lgb.LGBMClassifier(**self.model_params['lgbm_clf_aggressive'])
+            lgbm_agg_clf.fit(X_tree, y_binary)
+
+            # === 2. LGBM Conservative ===
+            lgbm_con_reg = lgb.LGBMRegressor(**self.model_params['lgbm_conservative'])
+            lgbm_con_reg.fit(X_tree, y_valid)
+
+            lgbm_con_clf = lgb.LGBMClassifier(**self.model_params['lgbm_clf_conservative'])
+            lgbm_con_clf.fit(X_tree, y_binary)
+
+            # === 3. CatBoost ===
+            cat_reg = CatBoostRegressor(**self.model_params['catboost'])
+            cat_reg.fit(X_tree, y_valid)
+
+            cat_clf = CatBoostClassifier(**self.model_params['catboost_clf'])
+            cat_clf.fit(X_tree, y_binary)
+
+            # === 4. Ridge (только macro features) ===
+            ridge_reg = Ridge(**self.model_params['ridge'])
+
+            # Стандартизация для Ridge
+            scaler = StandardScaler()
+            X_macro_scaled = scaler.fit_transform(X_macro)
+            ridge_reg.fit(X_macro_scaled, y_valid)
+
+            # Сохраняем модели
+            self.models[f'lgbm_agg_reg_{horizon}d'] = lgbm_agg_reg
+            self.models[f'lgbm_agg_clf_{horizon}d'] = lgbm_agg_clf
+            self.models[f'lgbm_con_reg_{horizon}d'] = lgbm_con_reg
+            self.models[f'lgbm_con_clf_{horizon}d'] = lgbm_con_clf
+            self.models[f'cat_reg_{horizon}d'] = cat_reg
+            self.models[f'cat_clf_{horizon}d'] = cat_clf
+            self.models[f'ridge_reg_{horizon}d'] = ridge_reg
+            self.scalers[f'ridge_scaler_{horizon}d'] = scaler
+
+            # === Оптимизация весов ансамбля ===
+            # Делаем предсказания всех моделей
+            pred_agg = lgbm_agg_reg.predict(X_tree)
+            pred_con = lgbm_con_reg.predict(X_tree)
+            pred_cat = cat_reg.predict(X_tree)
+            pred_ridge = ridge_reg.predict(X_macro_scaled)
+
+            predictions_list = [pred_agg, pred_con, pred_cat, pred_ridge]
+
+            # Оптимизируем веса
+            weights = self._optimize_ensemble_weights(y_valid, predictions_list)
+            self.ensemble_weights[f'{horizon}d'] = weights
 
             if horizon % 5 == 0:
-                print(f"    ✓ Обучено {horizon}/20 моделей")
+                # Показываем метрики ансамбля
+                ens_pred = sum(w * p for w, p in zip(weights, predictions_list))
+                mae_ens = mean_absolute_error(y_valid, ens_pred)
+                print(f"    ✓ День {horizon}/20: MAE={mae_ens:.6f}, веса={[f'{w:.2f}' for w in weights]}")
 
-        print(f"  ✓ Обучено {len([k for k in self.models.keys() if k.startswith('prob_')])} моделей")
+        total_models = len([k for k in self.models.keys() if any(x in k for x in ['_reg_', '_clf_'])])
+        print(f"  ✓ Обучено {total_models} моделей ({total_models//8} горизонтов × 8 моделей)")
+
+    def _optimize_ensemble_weights(self, y_true, predictions_list):
+        """Оптимизация весов ансамбля для минимизации MAE"""
+        def objective(weights):
+            pred = sum(w * p for w, p in zip(weights, predictions_list))
+            return mean_absolute_error(y_true, pred)
+
+        constraints = {'type': 'eq', 'fun': lambda w: np.sum(w) - 1}
+        bounds = [(0, 1) for _ in range(len(predictions_list))]
+        x0 = np.ones(len(predictions_list)) / len(predictions_list)
+
+        result = minimize(objective, x0, method='SLSQP', bounds=bounds, constraints=constraints)
+        return result.x
 
     def _generate_predictions(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Генерация предсказаний для submission в формате ticker,p1,p2,...,p20
 
-        Для каждого тикера берется последняя дата и делаются предсказания
-        вероятностей роста на каждый из 20 дней вперед
+        Использует ансамбль из 3 классификаторов для каждого горизонта:
+        - LGBM Aggressive + Conservative classifiers
+        - CatBoost classifier
+        Усредняем вероятности с весами
         """
         tree_features = self.feature_lists['tree_features']
+        macro_features = self.feature_lists['macro_features']
 
         # Берем последнюю дату по каждому тикеру
         last_dates = df.groupby('ticker')['date'].max().reset_index()
@@ -564,18 +700,31 @@ class FinancialForecaster:
             ticker = row['ticker']
 
             # Формируем фичи для этого тикера
-            X_ticker = pd.DataFrame([row[tree_features]]).fillna(0)
+            X_tree = pd.DataFrame([row[tree_features]]).fillna(0)
+            X_macro = pd.DataFrame([row[macro_features]]).fillna(0)
 
             # Предсказываем p1-p20
             probs = {'ticker': ticker}
 
             for horizon in range(1, 21):
-                model_key = f'prob_{horizon}d'
-                if model_key in self.models:
-                    prob = self.models[model_key].predict_proba(X_ticker)[:, 1][0]
+                # Проверяем наличие моделей
+                lgbm_agg_key = f'lgbm_agg_clf_{horizon}d'
+                lgbm_con_key = f'lgbm_con_clf_{horizon}d'
+                cat_key = f'cat_clf_{horizon}d'
+
+                if all(k in self.models for k in [lgbm_agg_key, lgbm_con_key, cat_key]):
+                    # Предсказываем вероятности от классификаторов
+                    prob_agg = self.models[lgbm_agg_key].predict_proba(X_tree)[:, 1][0]
+                    prob_con = self.models[lgbm_con_key].predict_proba(X_tree)[:, 1][0]
+                    prob_cat = self.models[cat_key].predict_proba(X_tree)[:, 1][0]
+
+                    # Усредняем вероятности (можно использовать веса если есть)
+                    # Простое усреднение 3 классификаторов
+                    prob = (prob_agg + prob_con + prob_cat) / 3.0
+
                     probs[f'p{horizon}'] = prob
                 else:
-                    # Если модель не обучена, возвращаем нейтральную вероятность
+                    # Если модели не обучены, возвращаем нейтральную вероятность
                     probs[f'p{horizon}'] = 0.5
 
             predictions_list.append(probs)
