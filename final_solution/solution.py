@@ -65,58 +65,23 @@ class FinancialForecaster:
     def _init_model_params(self):
         """Инициализация параметров моделей из main.ipynb"""
         self.model_params = {
-            'lgbm_aggressive': {
-                'n_estimators': 750,
-                'learning_rate': 0.05,
-                'max_depth': 8,
-                'subsample': 0.85,
-                'colsample_bytree': 0.85,
-                'reg_alpha': 0.1,
-                'reg_lambda': 0.1,
+            
+            'lgbm_aggressive': {'n_estimators': 500, 'learning_rate': 0.011524634851860945, 'max_depth': 5, 'num_leaves': 42, 'subsample': 0.7515373648546997, 'colsample_bytree': 0.8051483790938234, 'reg_alpha': 0.09854063392186402, 'reg_lambda': 0.762315689573122, 'random_state': self.random_state,
+                'verbose': -1},
+            'lgbm_conservative': {'n_estimators': 200, 'learning_rate': 0.005004797660286158, 'max_depth': 3, 'num_leaves': 11, 'subsample': 0.7110875498145232, 'colsample_bytree': 0.6003762182884825, 'reg_alpha': 0.5998213825478621, 'reg_lambda': 2.749019761992461,
                 'random_state': self.random_state,
                 'verbose': -1
             },
-            'lgbm_conservative': {
-                'n_estimators': 500,
-                'learning_rate': 0.01,
-                'max_depth': 5,
-                'num_leaves': 16,
-                'subsample': 0.7,
-                'colsample_bytree': 0.7,
-                'reg_alpha': 1.0,
-                'reg_lambda': 1.0,
+            'lgbm_clf_aggressive': {'n_estimators': 500, 'learning_rate': 0.011524634851860945, 'max_depth': 5, 'num_leaves': 42, 'subsample': 0.7515373648546997, 'colsample_bytree': 0.8051483790938234, 'reg_alpha': 0.09854063392186402, 'reg_lambda': 0.762315689573122, 'random_state': self.random_state,
+                'verbose': -1},
+            'lgbm_clf_conservative': {'n_estimators': 200, 'learning_rate': 0.005004797660286158, 'max_depth': 3, 'num_leaves': 11, 'subsample': 0.7110875498145232, 'colsample_bytree': 0.6003762182884825, 'reg_alpha': 0.5998213825478621, 'reg_lambda': 2.749019761992461,
                 'random_state': self.random_state,
                 'verbose': -1
             },
-            'lgbm_clf_aggressive': {
-                'n_estimators': 100,
-                'learning_rate': 0.05,
-                'max_depth': 5,
-                'random_state': self.random_state,
-                'verbose': -1
-            },
-            'lgbm_clf_conservative': {
-                'n_estimators': 100,
-                'learning_rate': 0.01,
-                'max_depth': 4,
-                'random_state': self.random_state,
-                'verbose': -1
-            },
-            'catboost': {
-                'iterations': 1000,
-                'l2_leaf_reg': 5,
-                'random_seed': self.random_state,
-                'grow_policy': 'Depthwise',
-                'verbose': 0
-            },
-            'catboost_clf': {
-                'iterations': 700,
-                'random_seed': self.random_state,
-                'grow_policy': 'Depthwise',
-                'verbose': 0
-            },
+            'catboost': {'iterations': 500, 'learning_rate': 0.011861436378627013, 'depth': 8, 'l2_leaf_reg': 1.75366927352826, 'verbose': 0},
+            'catboost_clf': {'iterations': 500, 'learning_rate': 0.011861436378627013, 'depth': 8, 'l2_leaf_reg': 1.75366927352826, 'verbose': 0},
             'ridge': {
-                'alpha': 1.0,
+                'alpha': 9.980472382076828,
                 'random_state': self.random_state
             }
         }
