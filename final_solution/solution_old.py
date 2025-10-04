@@ -2,11 +2,8 @@
 Financial Forecasting Solution
 HSE Finam Hackathon
 
-Класс FinancialForecaster для предсказания вероятностей роста акций
-на горизонтах от 1 до 20 дней с использованием новостных и ценовых данных.
-
-Формат submission: ticker,p1,p2,p3,...,p20
-где p1-p20 - вероятности роста на каждый из 20 дней вперед.
+Класс FinancialForecaster для предсказания доходностей и вероятностей роста акций
+на горизонтах 1 и 20 дней с использованием новостных и ценовых данных.
 """
 
 import pandas as pd
@@ -18,21 +15,21 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ML libraries
-from catboost import CatBoostClassifier
-from sklearn.cluster import KMeans
+from lightgbm import LGBMRegressor, LGBMClassifier
+from catboost import CatBoostRegressor, CatBoostClassifier
+from sklearn.linear_model import Ridge
+from sklearn.preprocessing import StandardScaler
 
 
 class FinancialForecaster:
     """
-    Класс для прогнозирования вероятностей роста акций на 1-20 дней вперед.
+    Класс для прогнозирования доходностей и вероятностей роста акций.
 
     Использует:
     - Новостные фичи (sentiment analysis + агрегации)
     - Ценовые фичи (OHLCV + technical indicators)
-    - 20 классификаторов CatBoost (по одному на каждый день)
+    - Ансамбль моделей (LGBM, CatBoost, Ridge)
     - Кластеризация тикеров для генерализации
-
-    Output format: ticker,p1,p2,...,p20 (одна строка на тикер)
     """
 
     def __init__(self, random_state: int = 42):
@@ -55,12 +52,38 @@ class FinancialForecaster:
     def _init_model_params(self):
         """Инициализация параметров моделей"""
         self.model_params = {
+            'lgbm_1d': {
+                'n_estimators': 200,
+                'learning_rate': 0.05,
+                'max_depth': 5,
+                'num_leaves': 31,
+                'min_child_samples': 20,
+                'subsample': 0.8,
+                'colsample_bytree': 0.8,
+                'random_state': self.random_state,
+                'verbose': -1
+            },
+            'lgbm_20d': {
+                'n_estimators': 300,
+                'learning_rate': 0.03,
+                'max_depth': 6,
+                'num_leaves': 63,
+                'min_child_samples': 20,
+                'subsample': 0.8,
+                'colsample_bytree': 0.8,
+                'random_state': self.random_state,
+                'verbose': -1
+            },
             'catboost': {
                 'iterations': 100,
                 'learning_rate': 0.03,
                 'depth': 5,
                 'random_state': self.random_state,
                 'verbose': False
+            },
+            'ridge': {
+                'alpha': 1.0,
+                'random_state': self.random_state
             }
         }
 
@@ -432,6 +455,7 @@ class FinancialForecaster:
 
     def _cluster_tickers(self, df: pd.DataFrame) -> pd.DataFrame:
         """Кластеризация тикеров для генерализации на новые тикеры"""
+        from sklearn.cluster import KMeans
 
         # Статистики для кластеризации
         ticker_stats = df.groupby('ticker').agg({
@@ -470,9 +494,8 @@ class FinancialForecaster:
 
     def _prepare_training_data(self, df: pd.DataFrame) -> Dict:
         """Подготовка данных для обучения"""
-        # Убираем строки где нет хотя бы одного таргета из 20
-        target_cols = [f'log_return_{i}d' for i in range(1, 21) if f'log_return_{i}d' in df.columns]
-        df = df.dropna(subset=target_cols, how='all')
+        # Убираем NaN в таргетах
+        df = df.dropna(subset=['log_return_1d', 'log_return_20d'])
 
         # Определяем фичи
         exclude_cols = ['ticker', 'date', 'begin', 'open', 'high', 'low', 'close', 'volume',
@@ -501,98 +524,94 @@ class FinancialForecaster:
         }
 
     def _train_models(self, train_data: Dict):
-        """Обучение моделей для предсказания вероятностей роста на 1-20 дней"""
+        """Обучение ансамбля моделей"""
         df = train_data['df']
         tree_features = train_data['tree_features']
+        macro_features = train_data['macro_features']
 
         # Подготовка данных
         X_tree = df[tree_features].fillna(0)
+        X_macro = df[macro_features].fillna(0)
 
-        # Обучаем 20 классификаторов - по одному для каждого дня
-        print("  • Обучение 20 классификаторов для p1-p20...")
+        # Таргеты для регрессии
+        y_1d = df['log_return_1d']
+        y_20d = df['log_return_20d']
 
-        for horizon in range(1, 21):
-            # Таргет: рост на horizon дней вперед
-            target_col = f'log_return_{horizon}d'
+        # Таргеты для классификации (вероятности роста)
+        y_1d_binary = (y_1d > 0).astype(int)
+        y_20d_binary = (y_20d > 0).astype(int)
 
-            if target_col not in df.columns:
-                print(f"    ⚠️  Пропускаем день {horizon} - нет таргета {target_col}")
-                continue
+        # 1. LGBM для предсказания return_1d
+        print("  • Обучение LGBM (1d)...")
+        self.models['lgbm_1d'] = LGBMRegressor(**self.model_params['lgbm_1d'])
+        self.models['lgbm_1d'].fit(X_tree, y_1d)
 
-            y = df[target_col]
-            y_binary = (y > 0).astype(int)
+        # 2. LGBM для предсказания return_20d
+        print("  • Обучение LGBM (20d)...")
+        self.models['lgbm_20d'] = LGBMRegressor(**self.model_params['lgbm_20d'])
+        self.models['lgbm_20d'].fit(X_tree, y_20d)
 
-            # Удаляем NaN
-            valid_mask = ~y_binary.isna()
-            X_valid = X_tree[valid_mask]
-            y_valid = y_binary[valid_mask]
+        # 3. CatBoost для вероятностей
+        print("  • Обучение CatBoost (prob 1d)...")
+        self.models['catboost_prob_1d'] = CatBoostClassifier(**self.model_params['catboost'])
+        self.models['catboost_prob_1d'].fit(X_tree, y_1d_binary)
 
-            if len(y_valid) == 0:
-                print(f"    ⚠️  Пропускаем день {horizon} - нет валидных данных")
-                continue
+        print("  • Обучение CatBoost (prob 20d)...")
+        self.models['catboost_prob_20d'] = CatBoostClassifier(**self.model_params['catboost'])
+        self.models['catboost_prob_20d'].fit(X_tree, y_20d_binary)
 
-            # Обучаем CatBoost классификатор
-            model = CatBoostClassifier(**self.model_params['catboost'])
-            model.fit(X_valid, y_valid)
-            self.models[f'prob_{horizon}d'] = model
+        # 4. Ridge для макро-фичей
+        print("  • Обучение Ridge (1d)...")
+        self.scalers['ridge_1d'] = StandardScaler()
+        X_macro_scaled = self.scalers['ridge_1d'].fit_transform(X_macro)
+        self.models['ridge_1d'] = Ridge(**self.model_params['ridge'])
+        self.models['ridge_1d'].fit(X_macro_scaled, y_1d)
 
-            if horizon % 5 == 0:
-                print(f"    ✓ Обучено {horizon}/20 моделей")
+        print("  • Обучение Ridge (20d)...")
+        self.scalers['ridge_20d'] = StandardScaler()
+        X_macro_scaled = self.scalers['ridge_20d'].fit_transform(X_macro)
+        self.models['ridge_20d'] = Ridge(**self.model_params['ridge'])
+        self.models['ridge_20d'].fit(X_macro_scaled, y_20d)
 
-        print(f"  ✓ Обучено {len([k for k in self.models.keys() if k.startswith('prob_')])} моделей")
+        print("  ✓ Все модели обучены")
 
     def _generate_predictions(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Генерация предсказаний для submission в формате ticker,p1,p2,...,p20
-
-        Для каждого тикера берется последняя дата и делаются предсказания
-        вероятностей роста на каждый из 20 дней вперед
-        """
+        """Генерация предсказаний для submission"""
         tree_features = self.feature_lists['tree_features']
+        macro_features = self.feature_lists['macro_features']
 
-        # Берем последнюю дату по каждому тикеру
-        last_dates = df.groupby('ticker')['date'].max().reset_index()
-        last_dates.columns = ['ticker', 'max_date']
+        X_tree = df[tree_features].fillna(0)
+        X_macro = df[macro_features].fillna(0)
 
-        # Фильтруем только последние даты
-        df_last = df.merge(last_dates, on='ticker')
-        df_last = df_last[df_last['date'] == df_last['max_date']].copy()
+        # Предсказания returns
+        pred_lgbm_1d = self.models['lgbm_1d'].predict(X_tree)
+        pred_lgbm_20d = self.models['lgbm_20d'].predict(X_tree)
 
-        predictions_list = []
+        X_macro_scaled_1d = self.scalers['ridge_1d'].transform(X_macro)
+        pred_ridge_1d = self.models['ridge_1d'].predict(X_macro_scaled_1d)
 
-        for _, row in df_last.iterrows():
-            ticker = row['ticker']
+        X_macro_scaled_20d = self.scalers['ridge_20d'].transform(X_macro)
+        pred_ridge_20d = self.models['ridge_20d'].predict(X_macro_scaled_20d)
 
-            # Формируем фичи для этого тикера
-            X_ticker = pd.DataFrame([row[tree_features]]).fillna(0)
+        # Ансамбль для returns (веса подобраны эмпирически)
+        return_1d = 0.7 * pred_lgbm_1d + 0.3 * pred_ridge_1d
+        return_20d = 0.7 * pred_lgbm_20d + 0.3 * pred_ridge_20d
 
-            # Предсказываем p1-p20
-            probs = {'ticker': ticker}
+        # Предсказания вероятностей
+        prob_1d = self.models['catboost_prob_1d'].predict_proba(X_tree)[:, 1]
+        prob_20d = self.models['catboost_prob_20d'].predict_proba(X_tree)[:, 1]
 
-            for horizon in range(1, 21):
-                model_key = f'prob_{horizon}d'
-                if model_key in self.models:
-                    prob = self.models[model_key].predict_proba(X_ticker)[:, 1][0]
-                    probs[f'p{horizon}'] = prob
-                else:
-                    # Если модель не обучена, возвращаем нейтральную вероятность
-                    probs[f'p{horizon}'] = 0.5
+        # Формируем submission
+        submission = pd.DataFrame({
+            'ticker': df['ticker'],
+            'date': df['date'],
+            'return_1d': return_1d,
+            'return_20d': return_20d,
+            'prob_1d': prob_1d,
+            'prob_20d': prob_20d
+        })
 
-            predictions_list.append(probs)
-
-        # Формируем финальный submission
-        submission = pd.DataFrame(predictions_list)
-
-        # Сортируем по ticker
-        submission = submission.sort_values('ticker').reset_index(drop=True)
-
-        # Убеждаемся что все колонки p1-p20 есть
-        for i in range(1, 21):
-            if f'p{i}' not in submission.columns:
-                submission[f'p{i}'] = 0.5
-
-        # Правильный порядок колонок: ticker,p1,p2,...,p20
-        cols = ['ticker'] + [f'p{i}' for i in range(1, 21)]
-        submission = submission[cols]
+        # Сортируем по ticker и date
+        submission = submission.sort_values(['ticker', 'date']).reset_index(drop=True)
 
         return submission

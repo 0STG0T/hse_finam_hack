@@ -1,6 +1,25 @@
+# Data files
 forecast_data/
-submission_*
-/catboost_info/
-.claude
+*.csv
+!correct_submission_sample.csv
+
+# Model artifacts
+*.pkl
+catboost_info/
 news_df_with_sentiment*
+
+# IDE & System
+.claude/
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Outputs
+submission*.csv
+final_solution/submission*.csv
+final_solution/trained_model.pkl
+
+# Project specific
 CLAUDE.md
+main.ipynb
