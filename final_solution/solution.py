@@ -319,8 +319,13 @@ class FinancialForecaster:
         """Создание ценовых технических индикаторов"""
         # Возвраты
         df['returns'] = df.groupby('ticker')['close'].pct_change()
+
+        # Returns для фичей (более редкие горизонты)
         for horizon in [1, 2, 5, 10, 20, 60]:
             df[f'return_{horizon}d'] = df.groupby('ticker')['close'].pct_change(horizon)
+
+        # Log returns для таргетов (ВСЕ 20 дней для обучения!)
+        for horizon in range(1, 21):
             df[f'log_return_{horizon}d'] = np.log(
                 df.groupby('ticker')['close'].shift(-horizon) / df['close']
             )
