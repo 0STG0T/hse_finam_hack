@@ -1,0 +1,6 @@
+forecast_data/
+submission_*
+/catboost_info/
+.claude
+news_df_with_sentiment*
+CLAUDE.md
