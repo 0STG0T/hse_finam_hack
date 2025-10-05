@@ -1,0 +1,16 @@
+OPTUNA OPTIMIZATION RESULTS
+============================================================
+
+catboost:
+  Best MAE: 0.037961
+  Best params:
+    bootstrap_type: MVS
+    iterations: 600
+    learning_rate: 0.005712184711091256
+    depth: 12
+    l2_leaf_reg: 18.32020271296862
+    border_count: 52
+    random_strength: 2.1408469200389026
+    min_data_in_leaf: 20
+    grow_policy: SymmetricTree
+

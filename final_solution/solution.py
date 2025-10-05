@@ -78,8 +78,8 @@ class FinancialForecaster:
                 'random_state': self.random_state,
                 'verbose': -1
             },
-            'catboost': {'iterations': 500, 'learning_rate': 0.011861436378627013, 'depth': 8, 'l2_leaf_reg': 1.75366927352826, 'verbose': 0},
-            'catboost_clf': {'iterations': 500, 'learning_rate': 0.011861436378627013, 'depth': 8, 'l2_leaf_reg': 1.75366927352826, 'verbose': 0},
+            'catboost': {'bootstrap_type': 'MVS', 'iterations': 600, 'learning_rate': 0.005712184711091256, 'depth': 12, 'l2_leaf_reg': 18.32020271296862, 'border_count': 52, 'random_strength': 2.1408469200389026, 'min_data_in_leaf': 20, 'grow_policy': 'SymmetricTree', 'verbose': 0},
+            'catboost_clf': {'bootstrap_type': 'MVS', 'iterations': 600, 'learning_rate': 0.005712184711091256, 'depth': 12, 'l2_leaf_reg': 18.32020271296862, 'border_count': 52, 'random_strength': 2.1408469200389026, 'min_data_in_leaf': 20, 'grow_policy': 'SymmetricTree', 'verbose': 0},
             'ridge': {
                 'alpha': 9.980472382076828,
                 'random_state': self.random_state
@@ -648,10 +648,8 @@ class FinancialForecaster:
         """
         Генерация предсказаний для submission в формате ticker,p1,p2,...,p20
 
-        Использует ансамбль из 3 классификаторов для каждого горизонта:
-        - LGBM Aggressive + Conservative classifiers
-        - CatBoost classifier
-        Усредняем вероятности с весами
+        p1-p20 = предсказанные ДОХОДНОСТИ (returns), НЕ вероятности!
+        Использует ансамбль регрессоров с оптимальными весами
         """
         tree_features = self.feature_lists['tree_features']
         macro_features = self.feature_lists['macro_features']
@@ -673,31 +671,52 @@ class FinancialForecaster:
             X_tree = pd.DataFrame([row[tree_features]]).fillna(0)
             X_macro = pd.DataFrame([row[macro_features]]).fillna(0)
 
-            # Предсказываем p1-p20
-            probs = {'ticker': ticker}
+            # Предсказываем p1-p20 (returns!)
+            returns_dict = {'ticker': ticker}
 
             for horizon in range(1, 21):
+                # Ключи для регрессоров
+                lgbm_agg_key = f'lgbm_agg_reg_{horizon}d'
+                lgbm_con_key = f'lgbm_con_reg_{horizon}d'
+                cat_key = f'cat_reg_{horizon}d'
+                ridge_key = f'ridge_reg_{horizon}d'
+                scaler_key = f'ridge_scaler_{horizon}d'
+
                 # Проверяем наличие моделей
-                lgbm_agg_key = f'lgbm_agg_clf_{horizon}d'
-                lgbm_con_key = f'lgbm_con_clf_{horizon}d'
-                cat_key = f'cat_clf_{horizon}d'
+                if lgbm_agg_key in self.models and lgbm_con_key in self.models and cat_key in self.models:
+                    # Предсказания от регрессоров
+                    pred_agg = self.models[lgbm_agg_key].predict(X_tree)[0]
+                    pred_con = self.models[lgbm_con_key].predict(X_tree)[0]
+                    pred_cat = self.models[cat_key].predict(X_tree)[0]
 
-                if all(k in self.models for k in [lgbm_agg_key, lgbm_con_key, cat_key]):
-                    # Предсказываем вероятности от классификаторов
-                    prob_agg = self.models[lgbm_agg_key].predict_proba(X_tree)[:, 1][0]
-                    prob_con = self.models[lgbm_con_key].predict_proba(X_tree)[:, 1][0]
-                    prob_cat = self.models[cat_key].predict_proba(X_tree)[:, 1][0]
+                    # Ridge на macro features
+                    if ridge_key in self.models and scaler_key in self.scalers:
+                        X_macro_scaled = self.scalers[scaler_key].transform(X_macro)
+                        pred_ridge = self.models[ridge_key].predict(X_macro_scaled)[0]
+                    else:
+                        pred_ridge = 0.0
 
-                    # Усредняем вероятности (можно использовать веса если есть)
-                    # Простое усреднение 3 классификаторов
-                    prob = (prob_agg + prob_con + prob_cat) / 3.0
+                    # Используем оптимальные веса если есть
+                    weight_key = f'{horizon}d'
+                    if weight_key in self.ensemble_weights:
+                        weights = self.ensemble_weights[weight_key]
+                        # Ансамбль с весами
+                        predicted_return = (
+                            weights[0] * pred_agg +
+                            weights[1] * pred_con +
+                            weights[2] * pred_cat +
+                            weights[3] * pred_ridge
+                        )
+                    else:
+                        # Простое усреднение если весов нет
+                        predicted_return = (pred_agg + pred_con + pred_cat + pred_ridge) / 4.0
 
-                    probs[f'p{horizon}'] = prob
+                    returns_dict[f'p{horizon}'] = predicted_return
                 else:
-                    # Если модели не обучены, возвращаем нейтральную вероятность
-                    probs[f'p{horizon}'] = 0.5
+                    # Если модели не обучены, возвращаем нейтральный return
+                    returns_dict[f'p{horizon}'] = 0.0
 
-            predictions_list.append(probs)
+            predictions_list.append(returns_dict)
 
         # Формируем финальный submission
         submission = pd.DataFrame(predictions_list)
@@ -708,7 +727,7 @@ class FinancialForecaster:
         # Убеждаемся что все колонки p1-p20 есть
         for i in range(1, 21):
             if f'p{i}' not in submission.columns:
-                submission[f'p{i}'] = 0.5
+                submission[f'p{i}'] = 0.0
 
         # Правильный порядок колонок: ticker,p1,p2,...,p20
         cols = ['ticker'] + [f'p{i}' for i in range(1, 21)]

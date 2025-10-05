@@ -116,25 +116,27 @@ def objective_lgbm_conservative(trial, X_train, y_train, X_val, y_val):
 
 def objective_catboost(trial, X_train, y_train, X_val, y_val):
     """Objective для CatBoost - расширенный поиск"""
+    # Сначала выбираем bootstrap_type
+    bootstrap_type = trial.suggest_categorical('bootstrap_type', ['Bayesian', 'Bernoulli', 'MVS'])
+
     params = {
         'iterations': trial.suggest_int('iterations', 200, 3000, step=100),
         'learning_rate': trial.suggest_float('learning_rate', 0.005, 0.3, log=True),
         'depth': trial.suggest_int('depth', 3, 12),
         'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 0.1, 30.0, log=True),
         'border_count': trial.suggest_int('border_count', 32, 255),
-        'bagging_temperature': trial.suggest_float('bagging_temperature', 0.0, 10.0),
         'random_strength': trial.suggest_float('random_strength', 0.0, 10.0),
         'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 100),
         'grow_policy': trial.suggest_categorical('grow_policy', ['SymmetricTree', 'Depthwise', 'Lossguide']),
-        'bootstrap_type': trial.suggest_categorical('bootstrap_type', ['Bayesian', 'Bernoulli', 'MVS']),
+        'bootstrap_type': bootstrap_type,
         'random_seed': 42,
         'verbose': 0
     }
 
     # Дополнительные параметры для разных bootstrap
-    if params['bootstrap_type'] == 'Bayesian':
+    if bootstrap_type == 'Bayesian':
         params['bagging_temperature'] = trial.suggest_float('bagging_temperature', 0.0, 10.0)
-    elif params['bootstrap_type'] == 'Bernoulli':
+    elif bootstrap_type == 'Bernoulli':
         params['subsample'] = trial.suggest_float('subsample', 0.5, 1.0)
 
     # Параметры для Lossguide
