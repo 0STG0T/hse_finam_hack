@@ -57,19 +57,28 @@ def load_data(candles_path='../forecast_data/candles.csv',
 
 
 def objective_lgbm_aggressive(trial, X_train, y_train, X_val, y_val):
-    """Objective для LGBM Aggressive"""
+    """Objective для LGBM Aggressive - максимальный поиск"""
     params = {
-        'n_estimators': trial.suggest_int('n_estimators', 300, 1000, step=50),
-        'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.1, log=True),
-        'max_depth': trial.suggest_int('max_depth', 5, 12),
-        'num_leaves': trial.suggest_int('num_leaves', 20, 100),
-        'subsample': trial.suggest_float('subsample', 0.7, 0.95),
-        'colsample_bytree': trial.suggest_float('colsample_bytree', 0.7, 0.95),
-        'reg_alpha': trial.suggest_float('reg_alpha', 0.01, 1.0, log=True),
-        'reg_lambda': trial.suggest_float('reg_lambda', 0.01, 1.0, log=True),
+        'n_estimators': trial.suggest_int('n_estimators', 100, 2000, step=50),
+        'learning_rate': trial.suggest_float('learning_rate', 0.005, 0.2, log=True),
+        'max_depth': trial.suggest_int('max_depth', 3, 15),
+        'num_leaves': trial.suggest_int('num_leaves', 15, 150),
+        'min_child_samples': trial.suggest_int('min_child_samples', 5, 100),
+        'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+        'subsample_freq': trial.suggest_int('subsample_freq', 0, 10),
+        'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0),
+        'reg_alpha': trial.suggest_float('reg_alpha', 1e-4, 10.0, log=True),
+        'reg_lambda': trial.suggest_float('reg_lambda', 1e-4, 10.0, log=True),
+        'min_split_gain': trial.suggest_float('min_split_gain', 0.0, 1.0),
+        'boosting_type': trial.suggest_categorical('boosting_type', ['gbdt', 'dart']),
         'random_state': 42,
         'verbose': -1
     }
+
+    # Для dart добавляем дополнительные параметры
+    if params['boosting_type'] == 'dart':
+        params['drop_rate'] = trial.suggest_float('drop_rate', 0.01, 0.3)
+        params['skip_drop'] = trial.suggest_float('skip_drop', 0.3, 0.7)
 
     model = lgb.LGBMRegressor(**params)
     model.fit(X_train, y_train)
@@ -79,16 +88,21 @@ def objective_lgbm_aggressive(trial, X_train, y_train, X_val, y_val):
 
 
 def objective_lgbm_conservative(trial, X_train, y_train, X_val, y_val):
-    """Objective для LGBM Conservative"""
+    """Objective для LGBM Conservative - широкий поиск с упором на регуляризацию"""
     params = {
-        'n_estimators': trial.suggest_int('n_estimators', 200, 700, step=50),
-        'learning_rate': trial.suggest_float('learning_rate', 0.005, 0.05, log=True),
-        'max_depth': trial.suggest_int('max_depth', 3, 7),
-        'num_leaves': trial.suggest_int('num_leaves', 8, 31),
-        'subsample': trial.suggest_float('subsample', 0.6, 0.8),
-        'colsample_bytree': trial.suggest_float('colsample_bytree', 0.6, 0.8),
-        'reg_alpha': trial.suggest_float('reg_alpha', 0.5, 5.0, log=True),
-        'reg_lambda': trial.suggest_float('reg_lambda', 0.5, 5.0, log=True),
+        'n_estimators': trial.suggest_int('n_estimators', 100, 1200, step=50),
+        'learning_rate': trial.suggest_float('learning_rate', 0.001, 0.1, log=True),
+        'max_depth': trial.suggest_int('max_depth', 2, 10),
+        'num_leaves': trial.suggest_int('num_leaves', 7, 63),
+        'min_child_samples': trial.suggest_int('min_child_samples', 10, 200),
+        'min_child_weight': trial.suggest_float('min_child_weight', 1e-5, 1e-1, log=True),
+        'subsample': trial.suggest_float('subsample', 0.4, 0.9),
+        'subsample_freq': trial.suggest_int('subsample_freq', 0, 7),
+        'colsample_bytree': trial.suggest_float('colsample_bytree', 0.4, 0.9),
+        'reg_alpha': trial.suggest_float('reg_alpha', 0.01, 20.0, log=True),
+        'reg_lambda': trial.suggest_float('reg_lambda', 0.01, 20.0, log=True),
+        'min_split_gain': trial.suggest_float('min_split_gain', 0.0, 2.0),
+        'max_bin': trial.suggest_int('max_bin', 127, 511),
         'random_state': 42,
         'verbose': -1
     }
@@ -101,15 +115,31 @@ def objective_lgbm_conservative(trial, X_train, y_train, X_val, y_val):
 
 
 def objective_catboost(trial, X_train, y_train, X_val, y_val):
-    """Objective для CatBoost"""
+    """Objective для CatBoost - расширенный поиск"""
     params = {
-        'iterations': trial.suggest_int('iterations', 500, 1500, step=100),
-        'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.1, log=True),
-        'depth': trial.suggest_int('depth', 4, 10),
-        'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 1.0, 10.0),
+        'iterations': trial.suggest_int('iterations', 200, 3000, step=100),
+        'learning_rate': trial.suggest_float('learning_rate', 0.005, 0.3, log=True),
+        'depth': trial.suggest_int('depth', 3, 12),
+        'l2_leaf_reg': trial.suggest_float('l2_leaf_reg', 0.1, 30.0, log=True),
+        'border_count': trial.suggest_int('border_count', 32, 255),
+        'bagging_temperature': trial.suggest_float('bagging_temperature', 0.0, 10.0),
+        'random_strength': trial.suggest_float('random_strength', 0.0, 10.0),
+        'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 100),
+        'grow_policy': trial.suggest_categorical('grow_policy', ['SymmetricTree', 'Depthwise', 'Lossguide']),
+        'bootstrap_type': trial.suggest_categorical('bootstrap_type', ['Bayesian', 'Bernoulli', 'MVS']),
         'random_seed': 42,
         'verbose': 0
     }
+
+    # Дополнительные параметры для разных bootstrap
+    if params['bootstrap_type'] == 'Bayesian':
+        params['bagging_temperature'] = trial.suggest_float('bagging_temperature', 0.0, 10.0)
+    elif params['bootstrap_type'] == 'Bernoulli':
+        params['subsample'] = trial.suggest_float('subsample', 0.5, 1.0)
+
+    # Параметры для Lossguide
+    if params['grow_policy'] == 'Lossguide':
+        params['max_leaves'] = trial.suggest_int('max_leaves', 16, 64)
 
     model = CatBoostRegressor(**params)
     model.fit(X_train, y_train)
@@ -119,19 +149,52 @@ def objective_catboost(trial, X_train, y_train, X_val, y_val):
 
 
 def objective_ridge(trial, X_train, y_train, X_val, y_val):
-    """Objective для Ridge"""
-    from sklearn.preprocessing import StandardScaler
+    """Objective для Ridge - расширенный поиск с preprocessing"""
+    from sklearn.preprocessing import StandardScaler, RobustScaler, MinMaxScaler
+    from sklearn.linear_model import Ridge, Lasso, ElasticNet
 
-    params = {
-        'alpha': trial.suggest_float('alpha', 0.01, 10.0, log=True),
-        'random_state': 42
-    }
+    # Выбор модели
+    model_type = trial.suggest_categorical('model_type', ['ridge', 'lasso', 'elasticnet'])
 
-    scaler = StandardScaler()
+    # Выбор scaler
+    scaler_type = trial.suggest_categorical('scaler_type', ['standard', 'robust', 'minmax'])
+
+    if scaler_type == 'standard':
+        scaler = StandardScaler()
+    elif scaler_type == 'robust':
+        scaler = RobustScaler()
+    else:
+        scaler = MinMaxScaler()
+
     X_train_scaled = scaler.fit_transform(X_train)
     X_val_scaled = scaler.transform(X_val)
 
-    model = Ridge(**params)
+    # Создание модели
+    if model_type == 'ridge':
+        params = {
+            'alpha': trial.suggest_float('alpha', 1e-3, 100.0, log=True),
+            'solver': trial.suggest_categorical('solver', ['auto', 'svd', 'cholesky', 'lsqr', 'sag', 'saga']),
+            'random_state': 42
+        }
+        model = Ridge(**params)
+    elif model_type == 'lasso':
+        params = {
+            'alpha': trial.suggest_float('alpha', 1e-4, 10.0, log=True),
+            'max_iter': trial.suggest_int('max_iter', 1000, 10000),
+            'selection': trial.suggest_categorical('selection', ['cyclic', 'random']),
+            'random_state': 42
+        }
+        model = Lasso(**params)
+    else:  # elasticnet
+        params = {
+            'alpha': trial.suggest_float('alpha', 1e-4, 10.0, log=True),
+            'l1_ratio': trial.suggest_float('l1_ratio', 0.0, 1.0),
+            'max_iter': trial.suggest_int('max_iter', 1000, 10000),
+            'selection': trial.suggest_categorical('selection', ['cyclic', 'random']),
+            'random_state': 42
+        }
+        model = ElasticNet(**params)
+
     model.fit(X_train_scaled, y_train)
     pred = model.predict(X_val_scaled)
 
@@ -214,7 +277,7 @@ def optimize_model(model_name, train_data, n_trials=50, horizon='5d'):
 
 def main():
     parser = argparse.ArgumentParser(description='Оптимизация гиперпараметров через Optuna')
-    parser.add_argument('--n-trials', type=int, default=50, help='Количество trials (default: 50)')
+    parser.add_argument('--n-trials', type=int, default=100, help='Количество trials (default: 100, рекомендуется 150-300 для максимального качества)')
     parser.add_argument('--model', type=str, default='all',
                        choices=['lgbm_aggressive', 'lgbm_conservative', 'catboost', 'ridge', 'all'],
                        help='Какую модель оптимизировать')
