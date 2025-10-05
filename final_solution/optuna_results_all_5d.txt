@@ -2,39 +2,60 @@ OPTUNA OPTIMIZATION RESULTS
 ============================================================
 
 lgbm_aggressive:
-  Best MAE: 0.038843
+  Best MAE: 0.037644
   Best params:
-    n_estimators: 500
-    learning_rate: 0.011524634851860945
-    max_depth: 5
-    num_leaves: 42
-    subsample: 0.7515373648546997
-    colsample_bytree: 0.8051483790938234
-    reg_alpha: 0.09854063392186402
-    reg_lambda: 0.762315689573122
+    n_estimators: 700
+    learning_rate: 0.06800207230594243
+    max_depth: 14
+    num_leaves: 104
+    min_child_samples: 97
+    subsample: 0.6518621409654142
+    subsample_freq: 1
+    colsample_bytree: 0.7695619514470191
+    reg_alpha: 0.0035816474263462824
+    reg_lambda: 0.0007900549696091742
+    min_split_gain: 0.42558551120515153
+    boosting_type: dart
+    drop_rate: 0.037071583659619115
+    skip_drop: 0.5698644427838353
 
 lgbm_conservative:
-  Best MAE: 0.038153
+  Best MAE: 0.037995
   Best params:
-    n_estimators: 200
-    learning_rate: 0.005004797660286158
-    max_depth: 3
-    num_leaves: 11
-    subsample: 0.7110875498145232
-    colsample_bytree: 0.6003762182884825
-    reg_alpha: 0.5998213825478621
-    reg_lambda: 2.749019761992461
+    n_estimators: 250
+    learning_rate: 0.006038652841807417
+    max_depth: 9
+    num_leaves: 59
+    min_child_samples: 112
+    min_child_weight: 6.57331574574997e-05
+    subsample: 0.6101501407841708
+    subsample_freq: 3
+    colsample_bytree: 0.4670041732306756
+    reg_alpha: 11.287018881029427
+    reg_lambda: 1.3136847823895224
+    min_split_gain: 1.9715498867739223
+    max_bin: 479
 
 catboost:
-  Best MAE: 0.038210
+  Best MAE: 0.037864
   Best params:
-    iterations: 500
-    learning_rate: 0.011861436378627013
-    depth: 8
-    l2_leaf_reg: 1.75366927352826
+    bootstrap_type: MVS
+    iterations: 200
+    learning_rate: 0.009042511520178017
+    depth: 12
+    l2_leaf_reg: 16.16222065863905
+    border_count: 58
+    random_strength: 0.2670428313553097
+    min_data_in_leaf: 18
+    grow_policy: SymmetricTree
 
 ridge:
-  Best MAE: 0.039401
+  Best MAE: 0.037995
   Best params:
-    alpha: 9.980472382076828
+    model_type: elasticnet
+    scaler_type: minmax
+    alpha: 0.37243634626621863
+    l1_ratio: 0.8627455614437713
+    max_iter: 1520
+    selection: random
 

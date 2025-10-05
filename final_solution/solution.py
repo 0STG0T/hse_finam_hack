@@ -79,11 +79,8 @@ class FinancialForecaster:
                 'verbose': -1
             },
             'catboost': {'bootstrap_type': 'MVS', 'iterations': 600, 'learning_rate': 0.005712184711091256, 'depth': 12, 'l2_leaf_reg': 18.32020271296862, 'border_count': 52, 'random_strength': 2.1408469200389026, 'min_data_in_leaf': 20, 'grow_policy': 'SymmetricTree', 'verbose': 0},
-            'catboost_clf': {'bootstrap_type': 'MVS', 'iterations': 600, 'learning_rate': 0.005712184711091256, 'depth': 12, 'l2_leaf_reg': 18.32020271296862, 'border_count': 52, 'random_strength': 2.1408469200389026, 'min_data_in_leaf': 20, 'grow_policy': 'SymmetricTree', 'verbose': 0},
-            'ridge': {
-                'alpha': 9.980472382076828,
-                'random_state': self.random_state
-            }
+            'catboost_clf': {'bootstrap_type': 'MVS', 'iterations': 200, 'learning_rate': 0.009042511520178017, 'depth': 12, 'l2_leaf_reg': 16.16222065863905, 'border_count': 58, 'random_strength': 0.2670428313553097, 'min_data_in_leaf': 18, 'grow_policy': 'SymmetricTree', 'verbose': 0},
+            'ridge': {'model_type': 'elasticnet', 'scaler_type': 'minmax', 'alpha': 0.37243634626621863, 'l1_ratio': 0.8627455614437713, 'max_iter': 1520, 'selection': 'random'}
         }
 
         # Веса ансамбля (будут оптимизированы при обучении)
