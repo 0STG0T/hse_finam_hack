@@ -66,15 +66,15 @@ class FinancialForecaster:
         """Инициализация параметров моделей из main.ipynb"""
         self.model_params = {
             
-            'lgbm_aggressive': {'n_estimators': 500, 'learning_rate': 0.011524634851860945, 'max_depth': 5, 'num_leaves': 42, 'subsample': 0.7515373648546997, 'colsample_bytree': 0.8051483790938234, 'reg_alpha': 0.09854063392186402, 'reg_lambda': 0.762315689573122, 'random_state': self.random_state,
+            'lgbm_aggressive': {'n_estimators': 700, 'learning_rate': 0.06800207230594243, 'max_depth': 14, 'num_leaves': 104, 'min_child_samples': 97, 'subsample': 0.6518621409654142, 'subsample_freq': 1, 'colsample_bytree': 0.7695619514470191, 'reg_alpha': 0.0035816474263462824, 'reg_lambda': 0.0007900549696091742, 'min_split_gain': 0.42558551120515153, 'boosting_type': 'dart', 'drop_rate': 0.037071583659619115, 'skip_drop': 0.5698644427838353, 'random_state': self.random_state,
                 'verbose': -1},
-            'lgbm_conservative': {'n_estimators': 200, 'learning_rate': 0.005004797660286158, 'max_depth': 3, 'num_leaves': 11, 'subsample': 0.7110875498145232, 'colsample_bytree': 0.6003762182884825, 'reg_alpha': 0.5998213825478621, 'reg_lambda': 2.749019761992461,
+            'lgbm_conservative': {'n_estimators': 250, 'learning_rate': 0.006038652841807417, 'max_depth': 9, 'num_leaves': 59, 'min_child_samples': 112, 'min_child_weight': 6.57331574574997e-05, 'subsample': 0.6101501407841708, 'subsample_freq': 3, 'colsample_bytree': 0.4670041732306756, 'reg_alpha': 11.287018881029427, 'reg_lambda': 1.3136847823895224, 'min_split_gain': 1.9715498867739223, 'max_bin': 479,
                 'random_state': self.random_state,
                 'verbose': -1
             },
-            'lgbm_clf_aggressive': {'n_estimators': 500, 'learning_rate': 0.011524634851860945, 'max_depth': 5, 'num_leaves': 42, 'subsample': 0.7515373648546997, 'colsample_bytree': 0.8051483790938234, 'reg_alpha': 0.09854063392186402, 'reg_lambda': 0.762315689573122, 'random_state': self.random_state,
+            'lgbm_clf_aggressive': {'n_estimators': 700, 'learning_rate': 0.06800207230594243, 'max_depth': 14, 'num_leaves': 104, 'min_child_samples': 97, 'subsample': 0.6518621409654142, 'subsample_freq': 1, 'colsample_bytree': 0.7695619514470191, 'reg_alpha': 0.0035816474263462824, 'reg_lambda': 0.0007900549696091742, 'min_split_gain': 0.42558551120515153, 'boosting_type': 'dart', 'drop_rate': 0.037071583659619115, 'skip_drop': 0.5698644427838353, 'random_state': self.random_state,
                 'verbose': -1},
-            'lgbm_clf_conservative': {'n_estimators': 200, 'learning_rate': 0.005004797660286158, 'max_depth': 3, 'num_leaves': 11, 'subsample': 0.7110875498145232, 'colsample_bytree': 0.6003762182884825, 'reg_alpha': 0.5998213825478621, 'reg_lambda': 2.749019761992461,
+            'lgbm_clf_conservative': {'n_estimators': 250, 'learning_rate': 0.006038652841807417, 'max_depth': 9, 'num_leaves': 59, 'min_child_samples': 112, 'min_child_weight': 6.57331574574997e-05, 'subsample': 0.6101501407841708, 'subsample_freq': 3, 'colsample_bytree': 0.4670041732306756, 'reg_alpha': 11.287018881029427, 'reg_lambda': 1.3136847823895224, 'min_split_gain': 1.9715498867739223, 'max_bin': 479,
                 'random_state': self.random_state,
                 'verbose': -1
             },
